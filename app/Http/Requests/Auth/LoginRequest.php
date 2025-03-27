@@ -41,16 +41,38 @@ class LoginRequest extends FormRequest
     {
         $this->ensureIsNotRateLimited();
 
-        if (! Auth::attempt($this->only('email', 'password'), $this->boolean('remember'))) {
+        $user = \App\Models\User::where('email', $this->email)->first();
+
+        if (!$user) {
+            throw ValidationException::withMessages([
+                'email' => 'Akun tidak ditemukan. Silakan periksa kembali email Anda.',
+            ]);
+        }
+
+        if ($user->status === 'inactive') {
+            throw ValidationException::withMessages([
+                'email' => 'Akun Anda dinonaktifkan. Silakan hubungi admin untuk mengaktifkan kembali.',
+            ]);
+        }
+
+        if ($user->deleted_at !== null) {
+            throw ValidationException::withMessages([
+                'email' => 'Akun ini telah dihapus. Silakan buat akun baru atau hubungi admin.',
+            ]);
+        }
+
+        // Proses autentikasi
+        if (!Auth::attempt($this->only('email', 'password'), $this->boolean('remember'))) {
             RateLimiter::hit($this->throttleKey());
 
             throw ValidationException::withMessages([
-                'email' => trans('auth.failed'),
+                'email' => 'Password salah. Silakan coba lagi.',
             ]);
         }
 
         RateLimiter::clear($this->throttleKey());
     }
+
 
     /**
      * Ensure the login request is not rate limited.
@@ -59,7 +81,7 @@ class LoginRequest extends FormRequest
      */
     public function ensureIsNotRateLimited(): void
     {
-        if (! RateLimiter::tooManyAttempts($this->throttleKey(), 5)) {
+        if (!RateLimiter::tooManyAttempts($this->throttleKey(), 5)) {
             return;
         }
 
